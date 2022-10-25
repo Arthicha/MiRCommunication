@@ -1,0 +1,8 @@
+build
+build/*
+.vscode
+install
+log
+**/.idea
+**/__pycache__
+auth.json
