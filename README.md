@@ -1,6 +1,6 @@
 # MiRCommunication
-In order to use MiR robot, a http communication is needed for connecting to the MiR rest API. This project in python
-defines some required functions.
+
+This repository provides a MiRCommunication class for interfacing MiR REST (REpresentational State Transfer) API.
 
 * * *
 # Installation
@@ -23,4 +23,4 @@ information in the field "auth" inside of the auth_example.json. Then change the
 
 In order to execute the code:
 
-    $ python3 main.py
+    $ python3 example.py
