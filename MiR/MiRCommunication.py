@@ -5,7 +5,7 @@ import json
 class MIR:
 	""" Description of the actions/requests the user can send/receive from MiR robot.
 
-	In order to establish a communication with MiR robot, a rest API needs to be programmed.
+	In order to establish a communication with MiR robot, a REST (REpresentational State Transfer) API  needs to be programmed.
 	Therefore, this class is programmed to hold this communication in order to do
 	the actions that will be useful for us during the project.
 	"""
@@ -37,7 +37,45 @@ class MIR:
 		self.error_type = {""}
 
 	# -----------------------------------------------------------------------------------
-	# read functions
+	# mission
+
+	def start_mission_queue(self):
+		self.change_state_id(3)
+
+	def stop_mission_queue(self):
+		self.change_state_id(4)
+
+	def get_actions_mission(self, guid):
+		return self.read(f'missions/{guid}/actions')
+
+	def get_mission_queue(self):
+		missions = self.read('mission_queue')
+		print(missions)
+
+	def get_guid_mission(self, name):
+		missions = self.get_missions()
+		guid = ''
+		full_mission_data = {}
+
+		for mission in missions:
+			if mission['name'] == name:
+				guid = mission['guid']
+				full_mission_data = mission
+				break
+			pass
+
+		return guid, full_mission_data
+
+	def post_simple_mission_queue(self, mission_id):
+		dict_post = {"mission_id": mission_id, "priority": 0}
+		return self.write('mission_queue', elements=dict_post)
+
+	def get_missions(self):
+		return self.read('missions')
+
+	# -----------------------------------------------------------------------------------
+	# robot navigation control
+
 	def move_to_LMarker(self, point_name, move_mission_name, helper=False):
 		guid_point, _ = self.get_LMarker_point(point_name, helper)
 		return self.__move_robot_to_guid_point__(guid_point, move_mission_name)
@@ -46,22 +84,48 @@ class MIR:
 		guid_point, _ = self.get_guid_point(point_name)
 		return self.__move_robot_to_guid_point__(guid_point, move_mission_name)
 
-	def start_mission_queue(self):
-		self.change_state_id(3)
+	def __move_robot_to_guid_point__(self, guid_point, move_mission_name):
+		guid_mission, _ = self.get_guid_mission(move_mission_name)
+		actions = self.get_actions_mission(guid_mission)
 
-	def get_actions_mission(self, guid):
-		return self.read(f'missions/{guid}/actions')
+		action_guid = ''
 
-	def stop_mission_queue(self):
-		self.change_state_id(4)
+		for action in actions:
+			if action["action_type"] == "move":
+				action_guid = action["guid"]
+				break
 
+		dict_helper = {
+			"priority": 999, "parameters": [
+				{
+					"id": "position",
+					"value": guid_point
+				}
+			]
+		}
+
+		print(action_guid)
+		self.put(f'missions/{guid_mission}/actions/{action_guid}', dict_helper)
+
+		return guid_mission, guid_point
+
+
+	# -----------------------------------------------------------------------------------
+	# sensory feedback
+	
 	def get_positions(self):
 		positions = self.read('positions')
 		return positions
 
-	def get_mission_queue(self):
-		missions = self.read('mission_queue')
-		print(missions)
+	def get_battery_status(self):
+		status = self.read('status')
+		battery = status['battery_percentage']
+		print(f"status: {status}")
+
+		return battery
+
+	# -----------------------------------------------------------------------------------
+	# map and marker
 
 	def get_LMarker_point(self, markerName, helper=False):
 		points = self.get_positions()
@@ -96,34 +160,9 @@ class MIR:
 
 		return guid, full_point_data
 
-	def get_guid_mission(self, name):
-		missions = self.get_missions()
-		guid = ''
-		full_mission_data = {}
-
-		for mission in missions:
-			if mission['name'] == name:
-				guid = mission['guid']
-				full_mission_data = mission
-				break
-			pass
-
-		return guid, full_mission_data
-
-	def post_simple_mission_queue(self, mission_id):
-		dict_post = {"mission_id": mission_id, "priority": 0}
-		return self.write('mission_queue', elements=dict_post)
-
-	def get_missions(self):
-		return self.read('missions')
-
-	def get_battery_status(self):
-		status = self.read('status')
-		battery = status['battery_percentage']
-		print(f"status: {status}")
-
-		return battery
-
+	# -----------------------------------------------------------------------------------
+	# robot state
+	
 	def change_state_id(self, id_robot):
 		if not (id_robot in self.states):
 			raise Exception("The id is not correct")
@@ -131,31 +170,7 @@ class MIR:
 		dict_help = {"state_id": id_robot}
 		self.put('status', dict_help)
 
-	def __move_robot_to_guid_point__(self, guid_point, move_mission_name):
-		guid_mission, _ = self.get_guid_mission(move_mission_name)
-		actions = self.get_actions_mission(guid_mission)
-
-		action_guid = ''
-
-		for action in actions:
-			if action["action_type"] == "move":
-				action_guid = action["guid"]
-				break
-
-		dict_helper = {
-			"priority": 999, "parameters": [
-				{
-					"id": "position",
-					"value": guid_point
-				}
-			]
-		}
-
-		print(action_guid)
-		self.put(f'missions/{guid_mission}/actions/{action_guid}', dict_helper)
-
-		return guid_mission, guid_point
-
+	
 	# -----------------------------------------------------------------------------------
 	# read/write MiR register
 
@@ -169,12 +184,7 @@ class MIR:
 		return status
 
 	# -----------------------------------------------------------------------------------
-	# play audio
-	def play_audio(self, audio_idx):
-		status = self.write_register(19, audio_idx)
-		return status
-
-	# -----------------------------------------------------------------------------------
+	# fundamental REST api: read (get), write (post), put
 
 	def read(self, uri, elements=None, verbose=False):
 
@@ -222,6 +232,9 @@ class MIR:
 			response = self.__transform_mess__(received_mess)
 
 		return response
+
+	# -----------------------------------------------------------------------------------
+	# static method for initialization
 
 	@staticmethod
 	def __transform_mess__(received_mess):
