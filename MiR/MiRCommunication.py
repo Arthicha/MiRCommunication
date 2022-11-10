@@ -2,19 +2,11 @@ import requests
 import json
 
 
-class MIR:
-	""" Description of the actions/requests the user can send/receive from MiR robot.
-
-	In order to establish a communication with MiR robot, a REST (REpresentational State Transfer) API  needs to be
-	programmed.
-	Therefore, this class is programmed to hold this communication in order to do
-	the actions that will be useful for us during the project.
-	"""
+class MIR: # MIR REST api
 
 	def __init__(self, auth_=None, auth_file=None):
 		"""
 		constructor: setup connection/interface. In order to set up a connection an Authorization must be passed.
-
 		Args:
 			auth_ (str): The Authorization string.
 			auth_file (str): The file where the Authorization is contained in a json format.
@@ -42,7 +34,7 @@ class MIR:
 		self.error_type = {""}
 
 	# -----------------------------------------------------------------------------------
-	# mission
+	# mission queue 
 
 	def start_mission_queue(self) -> None:
 		"""
@@ -56,16 +48,6 @@ class MIR:
 			"""
 		self.change_state_id(4)
 
-	def get_actions_mission(self, guid) -> list:
-		"""
-			Retrieve the list of actions that belong to the mission with the specified mission ID.
-
-			Args:
-				guid (str): The identification of the mission.
-			"""
-
-		return self.read(f'missions/{guid}/actions')
-
 	def get_mission_queue(self) -> list:
 		"""
 			Retrieve the list of missions in the queue. Finished, failed, pending and executing missions.
@@ -74,32 +56,9 @@ class MIR:
 		missions = self.read('mission_queue')
 		return missions
 
-	def get_guid_mission(self, name) -> (str, dict):
+	def mission_queue_add(self, mission_id) -> dict:
 		"""
-			Retrieve the mission ID and its information from MiR knowing its name. In case that
-			the mission is not found, the guid and the dictionary will be empty.
-
-			Args:
-				name (str): The name of the saved mission in MiR.
-			"""
-
-		missions = self.get_missions()
-		guid = ''
-		full_mission_data = {}
-
-		for mission in missions:
-			if mission['name'] == name:
-				guid = mission['guid']
-				full_mission_data = mission
-				break
-			pass
-
-		return guid, full_mission_data
-
-	def post_simple_mission_queue(self, mission_id) -> dict:
-		"""
-			Add a new mission to the mission queue. The mission will always go to the end of the queue.
-			This mission should not contain required arguments.
+			Add a mission to the mission queue (not execute the mission)
 
 			Args:
 				mission_id (str): the mission ID to be put in the queue.
@@ -108,73 +67,42 @@ class MIR:
 		dict_post = {"mission_id": mission_id, "priority": 0}
 		return self.write('mission_queue', elements=dict_post)
 
-	def get_missions(self) -> list:
-		"""
-			Retrieve the list of missions stored in MiR.
-			"""
+	# -----------------------------------------------------------------------------------
+	# robot navigation
 
-		return self.read('missions')
+	def move_to(self, point_name) -> (str):
+		"""
+			return a mission moving the robot to a predefined point
+
+			Args:
+				point_name (str): The name of the point to go.
+		"""
+		guid_point, _ = self.get_guid_point(point_name)
+		return self.__create_mission('move',guid_point)
+
+	def dock_to(self, point_name) -> (str):
+		"""
+			return a mission docking the robot to the L-marker
+
+			Args:
+				point_name (str): The name of the point to go.
+		"""
+		guid_point, _ = self.get_LMarker_point(point_name)
+		return self.__create_mission('dock',guid_point)
 
 	# -----------------------------------------------------------------------------------
-	# robot navigation control
+	# audio control
 
-	def move_to_LMarker(self, point_name, move_mission_name, helper=False) -> (str, str):
-		"""
-			The function move the robot to a LMarker position. In order to do so, a mission's action is modified to move
-			to a specific point. The helper can be accessed as well.
+	def scream(self, audio_name) -> (str):
+		if audio_name == 'beep':
+			mission = 'EiT: beep!'
+		elif audio_name == 'start':
+			mission = 'EiT: start'
+		elif audio_name == 'end':
+			mission = 'EiT: done!'
 
-			It retrieves the mission id, and the point id.
-
-			Args:
-				point_name (str): The name of the point to go.
-				move_mission_name (str): The name of the mission to modify.
-				helper (bool): Set true if you want
-			"""
-
-		guid_point, _ = self.get_LMarker_point(point_name, helper)
-		return self.__move_robot_to_guid_point__(guid_point, move_mission_name)
-
-	def move_to_point(self, point_name, move_mission_name) -> (str, str):
-		"""
-			The function move the robot to a position. In order to do so, a mission's action is modified to move
-			to a specific point.
-
-			It retrieves the mission id, and the point id.
-
-			Args:
-				point_name (str): The name of the point to go.
-				move_mission_name (str): The name of the mission to modify.
-			"""
-
-		guid_point, _ = self.get_guid_point(point_name)
-		return self.__move_robot_to_guid_point__(guid_point, move_mission_name)
-
-	def __move_robot_to_guid_point__(self, guid_point, move_mission_name) -> (str, str):
-
-		guid_mission, _ = self.get_guid_mission(move_mission_name)
-		actions = self.get_actions_mission(guid_mission)
-
-		action_guid = ''
-
-		for action in actions:
-			if action["action_type"] == "move":
-				action_guid = action["guid"]
-				break
-
-		dict_helper = {
-			"priority": 999, "parameters": [
-				{
-					"id": "position",
-					"value": guid_point
-				}
-			]
-		}
-
-		print(action_guid)
-		self.put(f'missions/{guid_mission}/actions/{action_guid}', dict_helper)
-
-		return guid_mission, guid_point
-
+		return self.get_mission(mission)
+	
 	# -----------------------------------------------------------------------------------
 	# sensory feedback
 
@@ -201,7 +129,7 @@ class MIR:
 				helper (bool): Set to True if you want to access to its helper.
 			"""
 
-		points = self.get_positions()
+		points = self.get_predefined_positions()
 		guid = ''
 		full_point_data = {}
 
@@ -216,7 +144,6 @@ class MIR:
 					full_point_data = point
 					break
 			pass
-
 		return guid, full_point_data
 
 	def get_guid_point(self, point_name) -> (str, dict):
@@ -227,7 +154,8 @@ class MIR:
 				point_name (str): The point's name.
 			"""
 
-		points = self.get_positions()
+		points = self.get_predefined_positions()
+
 		guid = ''
 		full_point_data = {}
 
@@ -237,10 +165,10 @@ class MIR:
 				full_point_data = point
 				break
 			pass
-
+		print('points data :',full_point_data)
 		return guid, full_point_data
 
-	def get_positions(self) -> list:
+	def get_predefined_positions(self) -> list:
 		"""
 			Retrieve the list of stored positions in the MiR robot.
 			"""
@@ -249,7 +177,75 @@ class MIR:
 		return positions
 
 	# -----------------------------------------------------------------------------------
-	# robot state
+	# mission
+
+	def get_predefined_missions(self) -> list:
+		"""
+			Retrieve the list of missions stored in MiR.
+			"""
+		return self.read('missions')
+
+	def __create_mission(self, mission_type , guid_point) -> (str):
+
+		mission = ''
+		if mission_type == 'move':
+			mission = 'EiT: move'
+			action_type = 'move'
+			param_name = 'position'
+		elif mission_type == 'dock':
+			mission = 'EiT: dock'
+			action_type = 'docking'
+			param_name = 'marker'
+
+		guid_mission = self.get_predefined_missions(mission)
+		actions = self.get_actions_mission(guid_mission)
+		action_guid = ''
+
+		for action in actions:
+			if action["action_type"] == action_type:
+				action_guid = action["guid"]
+				break
+
+		dict_helper = {"priority": 999, "parameters": [{"id": param_name,"value": guid_point}]}
+		self.put(f'missions/{guid_mission}/actions/{action_guid}', dict_helper)
+
+		return guid_mission
+
+	def get_mission(self, name) -> (str):
+		"""
+			Retrieve the mission ID and its information from MiR knowing its name. In case that
+			the mission is not found, the guid and the dictionary will be empty.
+
+			Args:
+				name (str): The name of the saved mission in MiR.
+			"""
+
+		missions = self.get_predefined_missions()
+		guid = ''
+		full_mission_data = {}
+
+		for mission in missions:
+			if mission['name'] == name:
+				guid = mission['guid']
+				full_mission_data = mission
+				break
+			pass
+
+		return guid
+
+	def get_actions_mission(self, guid) -> list:
+		"""
+			Retrieve the list of actions that belong to the mission with the specified mission ID.
+
+			Args:
+				guid (str): The identification of the mission.
+			"""
+
+		return self.read(f'missions/{guid}/actions')
+
+
+	# -----------------------------------------------------------------------------------
+	# robot operational state
 	
 	def change_state_id(self, id_robot) -> None:
 		"""
