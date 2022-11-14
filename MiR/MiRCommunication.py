@@ -26,12 +26,14 @@ class MIR: # MIR REST api
 				else:
 					raise Exception("The json has not the correct format")
 
+		self.__todolist__ = [] # to do list (so that MiR mission queue has 1 mission in maximum)
 		self.headers = {'Content-Type': 'application/json', 'Authorization': auth_}
 
 		self.mission_tex_executing = "Waiting for obstacles to be removed."
 		self.states = {10: "Emergency stop", 4: "Pause", 3: "Ready", 5: "Executing", 12: "Error"}
 		self.position_type = {"L-marker entry position": 14, "L-marker": 13, "Robot position": 0}
 		self.error_type = {""}
+		print("MIR COMMUNICATION INITIALIZED")
 
 	# -----------------------------------------------------------------------------------
 	# mission queue 
@@ -48,13 +50,6 @@ class MIR: # MIR REST api
 			"""
 		self.change_state_id(4)
 
-	def get_mission_queue(self) -> list:
-		"""
-			Retrieve the list of missions in the queue. Finished, failed, pending and executing missions.
-			"""
-
-		missions = self.read('mission_queue')
-		return missions
 
 	def mission_queue_add(self, mission_id) -> dict:
 		"""
@@ -66,6 +61,31 @@ class MIR: # MIR REST api
 
 		dict_post = {"mission_id": mission_id, "priority": 0}
 		return self.write('mission_queue', elements=dict_post)
+
+	def todolist_add(self, mission_function, args=None):
+		"""
+			Add a mission function to the mission queue (not execute the mission)
+
+			Args:
+				mission_id (str): the mission ID to be put in the queue.
+			"""
+
+		self.__todolist__.append([mission_function,args])
+
+	def handle(self):
+		"""
+			update function, do new task from todolist if previous mission is done
+		"""
+		if self.get_mission_history()[-1]['state'] in ['Done','Aborted']:
+			if len(self.__todolist__) > 0:
+				task = self.__todolist__.pop(0)
+				missionid = task[0](task[1])
+				self.mission_queue_add(missionid)
+				return 1
+			else:
+				return 0
+		else:
+			return 1
 
 	# -----------------------------------------------------------------------------------
 	# robot navigation
@@ -80,6 +100,15 @@ class MIR: # MIR REST api
 		guid_point, _ = self.get_guid_point(point_name)
 		return self.__create_mission('move',guid_point)
 
+	def move_for(self, forward_distance) -> (str):
+		"""
+			return a mission for relative move
+
+			Args:
+				forward_distance (float): forward distance
+		"""
+		return self.__create_mission('relative move',forward_distance)
+
 	def dock_to(self, point_name) -> (str):
 		"""
 			return a mission docking the robot to the L-marker
@@ -87,8 +116,9 @@ class MIR: # MIR REST api
 			Args:
 				point_name (str): The name of the point to go.
 		"""
-		guid_point, _ = self.get_LMarker_point(point_name)
-		return self.__create_mission('dock',guid_point)
+		guid, _ = self.get_LMarker_point(point_name)
+		return self.__create_mission('dock',guid)
+
 
 	# -----------------------------------------------------------------------------------
 	# audio control
@@ -110,7 +140,6 @@ class MIR: # MIR REST api
 		"""
 			Retrieve the battery percentage of the MiR.
 			"""
-
 		status = self.read('status')
 		battery = status['battery_percentage']
 		print(f"status: {status}")
@@ -165,7 +194,6 @@ class MIR: # MIR REST api
 				full_point_data = point
 				break
 			pass
-		print('points data :',full_point_data)
 		return guid, full_point_data
 
 	def get_predefined_positions(self) -> list:
@@ -185,7 +213,7 @@ class MIR: # MIR REST api
 			"""
 		return self.read('missions')
 
-	def __create_mission(self, mission_type , guid_point) -> (str):
+	def __create_mission(self, mission_type , parameter_value) -> (str):
 
 		mission = ''
 		if mission_type == 'move':
@@ -196,17 +224,20 @@ class MIR: # MIR REST api
 			mission = 'EiT: dock'
 			action_type = 'docking'
 			param_name = 'marker'
+		elif mission_type == 'relative move':
+			mission = 'EiT: relative move'
+			action_type = 'relative_move'
+			param_name = 'x'
 
-		guid_mission = self.get_predefined_missions(mission)
+		guid_mission = self.get_mission(mission)
 		actions = self.get_actions_mission(guid_mission)
 		action_guid = ''
-
 		for action in actions:
 			if action["action_type"] == action_type:
 				action_guid = action["guid"]
 				break
 
-		dict_helper = {"priority": 999, "parameters": [{"id": param_name,"value": guid_point}]}
+		dict_helper = {"priority": 999, "parameters": [{"id": param_name,"value": parameter_value}]}
 		self.put(f'missions/{guid_mission}/actions/{action_guid}', dict_helper)
 
 		return guid_mission
@@ -230,7 +261,6 @@ class MIR: # MIR REST api
 				full_mission_data = mission
 				break
 			pass
-
 		return guid
 
 	def get_actions_mission(self, guid) -> list:
@@ -257,6 +287,15 @@ class MIR: # MIR REST api
 
 		dict_help = {"state_id": id_robot}
 		self.put('status', dict_help)
+
+
+	def get_mission_history(self) -> list:
+		"""
+			Retrieve the list of missions in the queue. Finished, failed, pending and executing missions.
+			"""
+
+		missions = self.read('mission_queue')
+		return missions
 
 	# -----------------------------------------------------------------------------------
 	# read/write MiR register
