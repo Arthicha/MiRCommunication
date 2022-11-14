@@ -1,21 +1,32 @@
 from MiR.MiRCommunication import MIR
+"""
+ an example program: move/doct to different predefined locations
+"""
 
 auth_file = "auth.json" # authorization file
 
 if __name__ == "__main__":
 
-    mir = MIR(auth_file=auth_file) # initialize MiR communication
+	mir = MIR(auth_file=auth_file) # initialize MiR communication
 
-    mir.stop_mission_queue() # pause the mission queue
+	mir.stop_mission_queue() # pause the mission queue
 
-    mir.mission_queue_add(mir.scream('start')) # play audio "start"
-    mir.mission_queue_add(mir.move_to('Home')) # move to "Home"
+	mir.todolist_add(mir.move_to,'Home')
+	mir.todolist_add(mir.scream,'start')
 
-    mir.mission_queue_add(mir.dock_to('shelfA')) # perform precision docking at "shelfA"
-    mir.mission_queue_add(mir.scream('beep')) # play audio "beep"
+	mir.todolist_add(mir.move_to,'Warehouse')
+	mir.todolist_add(mir.scream,'beep')
 
-    mir.mission_queue_add(mir.move_to('Home')) # move to "Home"
-    mir.mission_queue_add(mir.scream('end')) # play audio "end"
+	mir.todolist_add(mir.dock_to,'shelfA')
+	mir.todolist_add(mir.move_for,-0.2)
+	mir.todolist_add(mir.scream,'beep')
 
-    mir.start_mission_queue() # play the mission queue
-    
+	mir.todolist_add(mir.move_to,'Warehouse')
+	mir.todolist_add(mir.scream,'end')
+
+	mir.start_mission_queue() # play the mission queue
+
+	while(1):
+		mir.handle()
+
+	
